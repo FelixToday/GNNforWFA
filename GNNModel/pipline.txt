@@ -1,0 +1,18 @@
+# =========================================
+# ST-GCN Pipeline 调用伪代码示例
+# =========================================
+
+# 假设已经有以下模块实现并符合接口：
+# STGCN_Conv1D, STGCN_Pool1D, STGCN_AdaptivePool1D
+
+# 1️⃣ 输入数据
+X: Tensor of shape (B, T, N, F)         # 节点特征
+A: Tensor of shape (B, T, N, N)         # 邻接矩阵
+num_classes: int                         # 分类类别数
+
+# 2️⃣ 定义一个模型STGCN，使用接口里面的模块，用于实现图卷积分类
+输入：input_features, num_classes
+输出：logits
+
+# 3 训练
+# 4 测试

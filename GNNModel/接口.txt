@@ -1,0 +1,57 @@
+class STGCN_Conv1D:
+    """
+    ST-GCN 卷积模块接口
+    输入:
+        in_features: int
+        out_features: int
+        kernel_size: int
+        stride: int
+        padding: int
+    输出:
+        forward(X, A) -> Y
+    """
+    function forward(X, A) -> Y
+        """
+        输入:
+            X: (B, T, N, Fin)
+            A: (B, T, N, N)
+        输出:
+            Y: (B, T_out, N, Fout)
+        """
+        pass
+
+
+class STGCN_Pool1D:
+    """
+    ST-GCN 固定时间池化模块接口
+    输入:
+        kernel_size: int
+        stride: int
+    输出:
+        forward(X) -> Y
+    """
+    function forward(X, A=None) -> Y
+        """
+        输入:
+            X: (B, T, N, F)
+        输出:
+            Y: (B, T_out, N, F)
+        """
+        pass
+
+class STGCN_AdaptivePool1D:
+    """
+    ST-GCN 自适应时间池化模块接口
+    输入:
+        output_size: int
+    输出:
+        forward(X) -> Y
+    """
+    function forward(X, A=None) -> Y
+        """
+        输入:
+            X: (B, T, N, F)
+        输出:
+            Y: (B, output_size, N, F)
+        """
+        pass
