@@ -199,7 +199,7 @@ if __name__ == "__main__":
     from GNNRun.utils import load_data
     import time
     from tqdm import tqdm
-    X, y = load_data(r"/root/autodl-tmp/dataset/wfa/npz_dataset/CW/valid.npz")
+    X, y = load_data(r"/root/autodl-tmp/dataset/wfa/npz_dataset/Closed_2tab/valid.npz")
     dataset1 = GNNDataset(X, y,
                          loaded_ratio=100,
                          TAM_type='G1',

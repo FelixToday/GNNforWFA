@@ -191,10 +191,10 @@ parser = argparse.ArgumentParser(description='模型训练参数配置')
 parser.add_argument('--batch_size', type=int, default=32, help='训练时每个 batch 的样本数量')
 parser.add_argument('--epochs', type=int, default=100, help='训练轮数')
 parser.add_argument('--lr', type=float, default=0.001, help='学习率')
-parser.add_argument('--num_classes', type=int, default=100, help='分类任务类别数')
 # 数据参数
 parser.add_argument('--database_dir', type=str, default=r"/root/autodl-tmp/dataset/wfa/npz_dataset", help='数据存储的位置')
 parser.add_argument('--dataset', type=str, default=r"Closed_2tab", help='选择的数据集')
+parser.add_argument('--note', type=str, default=r"MG2_DG2", help='运行结果保存的文件夹')
 parser.add_argument('--loaded_ratio', type=int, default=100, help='加载的数据比例（%）')
 parser.add_argument('--TAM_type', type=str, default='G1', help='提取特征的方法')
 parser.add_argument('--seq_len', type=int, default=5000, help='流量最大长度')
@@ -210,14 +210,19 @@ parser.add_argument('--verbose_metrics', type=str_to_bool, default=False, help='
 parser.add_argument('--model', type=str, default='STGCN_G1', help='使用的模型')
 
 # 系统参数
-parser.add_argument('--checkpoint_path', type=str, default='./checkpoints', help='保存最优模型的路径')
+parser.add_argument('--checkpoint_path', type=str, default='../checkpoints', help='保存最优模型的路径')
 parser.add_argument('--num_workers', type=int, default=16, help='数据集加载的进程数')
 parser.add_argument('--early_stopping_patience', type=int, default=10, help='早停耐心值')
 
 CONFIG = parse_args(parser, is_print_help=True)
-CONFIG['problem_type'] = 'single_label' if dataset_lib[CONFIG['dataset']]['num_tabs'] == 1 else'multi_label'
 
+CONFIG['note'] = f'M_{CONFIG["model"]}_D_{CONFIG["TAM_type"]}'
+CONFIG['problem_type'] = 'single_label' if dataset_lib[CONFIG['dataset']]['num_tabs'] == 1 else'multi_label'
+CONFIG["checkpoint_path"] = os.path.join(CONFIG["checkpoint_path"], CONFIG["dataset"], CONFIG["note"])
 verbose = CONFIG['verbose_metrics']
+
+
+
 if CONFIG['is_test']:
     CONFIG['epochs']=3
     CONFIG["n_samples"]=CONFIG['batch_size'] * 10
@@ -235,6 +240,12 @@ database_dir = str(os.path.join(CONFIG['database_dir'], CONFIG['dataset']))
 X_train, y_train = load_data(os.path.join(database_dir, "train.npz"))
 X_val, y_val = load_data(os.path.join(database_dir, "valid.npz"))
 X_test, y_test = load_data(os.path.join(database_dir, "test.npz"))
+
+if dataset_lib[CONFIG['dataset']]['num_tabs'] == 1:
+    num_classes = len(np.unique(y_train))
+else:
+    num_classes = y_train.shape[1]
+
 max_k=5
 return_k=dataset_lib[CONFIG['dataset']]['num_tabs']
 # 限制样本数量（调试用）
@@ -290,7 +301,7 @@ CONFIG["n_dim"] = train_dataset[0][0][0].shape[-1]
 # 初始化模型
 # ===========================
 model = eval(CONFIG["model"])(input_dim=CONFIG["n_dim"],
-                              num_classes=CONFIG["num_classes"],
+                              num_classes=num_classes,
                               level_count=CONFIG["level_count"])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -357,7 +368,6 @@ def train_epoch(model, train_loader, criterion, optimizer, device, config):
         # 前向传播
         optimizer.zero_grad()
         logits = model(A, X)
-
         # 计算损失
         loss = criterion(logits, y)
 

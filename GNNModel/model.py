@@ -24,7 +24,6 @@ def timer(func):
         else:
             print(f"函数 {func_name} 运行时间: {elapsed_time:.6f} 秒")
         return result
-
     return wrapper
 class CNN(nn.Module):
     def __init__(self, num_classes=100, input_features=1):
@@ -336,44 +335,6 @@ class STGCN_AdaptivePool1D(nn.Module):
 
         return torch.stack(out, dim=1)    # (B, output_size, N, F)
 
-
-class STGCN(nn.Module):
-    def __init__(self, input_features, num_classes):
-        super().__init__()
-        # 图卷积层
-        self.net = STGCN_Sequential(
-            STGCN_Conv1D(in_features=input_features, out_features=32, kernel_size=3),
-            STGCN_Conv1D(in_features=32, out_features=64, kernel_size=3),
-            STGCN_Pool1D(2),
-            nn.ReLU(),
-            STGCN_Conv1D(in_features=64, out_features=128, kernel_size=3),
-            STGCN_Conv1D(in_features=128, out_features=256, kernel_size=3),
-            STGCN_Pool1D(2),
-            nn.ReLU(),
-            STGCN_Conv1D(in_features=256, out_features=512, kernel_size=3),
-        )
-
-        # 时间池化层
-        self.pool = STGCN_AdaptivePool1D(1)
-        self.global_pool = nn.AdaptiveAvgPool1d(1)
-        # 分类层
-        self.fc = nn.Linear(512, num_classes)
-    def forward(self, A, X):
-        # 图卷积 + ReLU
-        X = self.net(A, X)  # (B, T, N, 64)
-        # 时间池化
-        X = self.pool(X)  # (B, T_out, N, 128)
-        # 节点维度聚合
-        B, T_out, N, F = X.shape
-        X = X.permute(0, 3, 2, 1)  # (B, F, N, T_out)
-        X = X.reshape(B, F, N * T_out)  # (B, F, N*T_out)
-        X = self.global_pool(X)  # (B, F, 1)
-        X = X.squeeze(-1)  # (B, F)
-
-        # 分类
-        logits = self.fc(X)  # (B, num_classes)
-        return logits
-
 class STGCN_G1(nn.Module):
     def __init__(self, num_classes, input_dim, level_count, embed_dim=128, is_parallel=True, **kwargs):
         super().__init__()
@@ -417,7 +378,6 @@ class STGCN_G1(nn.Module):
                 )
                 for _ in range(num_classes)
             ])
-
     #@timer
     def forward(self, A, x):
         x = self.embed(x)
@@ -429,10 +389,56 @@ class STGCN_G1(nn.Module):
             x = x.squeeze(-1)  # (B, num_classes)
         else:
             x = [ind_net_i(copy.deepcopy(x)) for ind_net_i in self.ind_net]
-            x = torch.stack(x)
+            x = torch.cat(x,dim=1)
+            pass
         return x
 
+class STGCN_G2(nn.Module):
+    def __init__(self, num_classes, input_dim, level_count, embed_dim=128, is_parallel=True, **kwargs):
+        super().__init__()
+        self.num_classes = num_classes
+        self.embed_dim = embed_dim
+        self.is_parallel = is_parallel
 
+        self.embed = nn.Linear(input_dim, self.embed_dim)
+        self.share_cnn = nn.Sequential(
+            nn.Conv1d(self.embed_dim, 128, kernel_size=7),
+            nn.MaxPool1d(kernel_size=3),
+            nn.ReLU(),
+            nn.Conv1d(128, 256, kernel_size=7),
+            nn.MaxPool1d(kernel_size=3),
+            nn.ReLU(),
+            nn.Conv1d(256, 512, kernel_size=5),
+            nn.MaxPool1d(kernel_size=3),
+            nn.ReLU(),
+        )
+        self.share_atten = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model=512, nhead=8, dim_feedforward=2048, batch_first=True),
+            num_layers=2,
+        )
+
+
+        self.ind_net = nn.ModuleList([
+            nn.Sequential(
+            nn.TransformerEncoderLayer(d_model=512, nhead=8, dim_feedforward=2048, batch_first=True),
+            Rearrange('B T D -> B D T'),
+            nn.AdaptiveAvgPool1d(1),
+            Rearrange('B D T -> B (D T)'),
+            nn.Linear(512, 1)
+            )
+            for _ in range(num_classes)
+        ])
+
+    #@timer
+    def forward(self, A, x):
+        x = self.embed(x)
+        x = Rearrange('B T N D -> B D (T N)')(x)
+        x = self.share_cnn(x)
+        x = Rearrange('B D T -> B T D')(x)
+        x = self.share_atten(x)
+        x = [ind_net_i(x.detach().clone()) for ind_net_i in self.ind_net]
+        x = torch.cat(x, dim=1)
+        return x
 
 
 if __name__ == "__main__":
@@ -451,16 +457,10 @@ if __name__ == "__main__":
     # ===========================
     # 初始化模型
     # ===========================
-    # model = STGCN(input_features=n_dim, num_classes=num_classes)
-    # from torchinfo import summary
-    # summary(model, input_data=(A, X), depth=10)
-    #
-    # model = CNN(input_features=n_dim, num_classes=num_classes)
-    # from torchinfo import summary
-    # from einops.layers.torch import Rearrange
-    # summary(model, input_data=X, depth=10)
+    model = STGCN_G2(num_classes=num_classes, input_dim=n_dim, embed_dim=embed_dim, is_parallel=False,
+                     level_count=N)
+    summary(model, input_data=(A, X), depth=1, col_names=["input_size", "output_size", "num_params", "trainable"])
 
-    model = STGCN_G1(num_classes=num_classes, input_dim=n_dim, embed_dim=embed_dim, is_parallel=False)
-    summary(model, input_data=(A, X), depth=1)
-    model = STGCN_G1(num_classes=num_classes, input_dim=n_dim, embed_dim=embed_dim, is_parallel=True)
-    summary(model, input_data=(A, X), depth=1)
+    # model = STGCN_G1(num_classes=num_classes, input_dim=n_dim, embed_dim=embed_dim, is_parallel=True,
+    #                  level_count=N)
+    # summary(model, input_data=(A, X), depth=1, col_names=["input_size", "output_size", "num_params", "trainable"])
