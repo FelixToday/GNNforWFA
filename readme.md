@@ -1,3 +1,8 @@
+# 数据集位置
+从 https://zenodo.org/records/14195051 下载数据
+只需要下载Closed_5tab和CW两个数据集，解压后放在 /root/autodl-tmp/dataset/wfa/npz_dataset 目录下
+
+
 # 安装依赖环境
 
 ```bash
